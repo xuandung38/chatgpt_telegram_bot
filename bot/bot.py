@@ -24,17 +24,16 @@ import config
 import database
 import openai_utils
 
-
 # setup
 db = database.Database()
 logger = logging.getLogger(__name__)
 
 HELP_MESSAGE = """Commands:
-⚪ /retry – Regenerate last bot answer
-⚪ /new – Start new dialog
-⚪ /mode – Select chat mode
-⚪ /balance – Show balance
-⚪ /help – Show help
+⚪ /retry – Tạo lại câu trả lời cuối cùng
+⚪ /new – Bắt đầu hộp thoại mới
+⚪ /mode – Chọn chế độ trò chuyện
+⚪ /ask – Hỏi một câu hỏi mới
+⚪ /help – Hiển thị trợ giúp
 """
 
 
@@ -50,7 +49,7 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
             update.message.chat_id,
             username=user.username,
             first_name=user.first_name,
-            last_name= user.last_name
+            last_name=user.last_name
         )
         db.start_new_dialog(user.id)
 
@@ -61,15 +60,15 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
 async def start_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
-    
+
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
     db.start_new_dialog(user_id)
-    
-    reply_text = "Hi! I'm <b>ChatGPT</b> bot implemented with GPT-3.5 OpenAI API 🤖\n\n"
+
+    reply_text = f"Chào {update.message.from_user.name} ! Em là <b>Layla</b> Thư ký ảo của FoxSolutions 🤖\n\n"
     reply_text += HELP_MESSAGE
 
-    reply_text += "\nAnd now... ask me anything!"
-    
+    reply_text += f"\nHãy hỏi em bất kỳ điều gì {update.message.from_user.name} muốn ạ!"
+
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
 
 
@@ -87,7 +86,7 @@ async def retry_handle(update: Update, context: CallbackContext):
 
     dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
     if len(dialog_messages) == 0:
-        await update.message.reply_text("No message to retry 🤷‍♂️")
+        await update.message.reply_text("Không có tin nhắn nào để thử lại 🤷‍♂️")
         return
 
     last_dialog_message = dialog_messages.pop()
@@ -101,16 +100,20 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
     if update.edited_message is not None:
         await edited_message_handle(update, context)
         return
-        
+
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
 
     # new dialog timeout
     if use_new_dialog_timeout:
-        if (datetime.now() - db.get_user_attribute(user_id, "last_interaction")).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
+        if (datetime.now() - db.get_user_attribute(user_id,
+                                                   "last_interaction")).seconds > config.new_dialog_timeout and len(
+                db.get_dialog_messages(user_id)) > 0:
             db.start_new_dialog(user_id)
-            await update.message.reply_text(f"Starting new dialog due to timeout (<b>{openai_utils.CHAT_MODES[chat_mode]['name']}</b> mode) ✅", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(
+                f"Bắt đầu hộp thoại mới do hết thời gian chờ (<b>{openai_utils.CHAT_MODES[chat_mode]['name']}</b> mode) ✅",
+                parse_mode=ParseMode.HTML)
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     # send typing action
@@ -140,7 +143,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         db.set_user_attribute(user_id, "n_used_tokens", n_used_tokens + db.get_user_attribute(user_id, "n_used_tokens"))
 
     except Exception as e:
-        error_text = f"Something went wrong during completion. Reason: {e}"
+        error_text = f"Đã xảy ra sự cố trong quá trình hoàn thành. Lý do: {e}"
         logger.error(error_text)
         await update.message.reply_text(error_text)
         return
@@ -148,9 +151,9 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
     # send message if some messages were removed from the context
     if n_first_dialog_messages_removed > 0:
         if n_first_dialog_messages_removed == 1:
-            text = "✍️ <i>Note:</i> Your current dialog is too long, so your <b>first message</b> was removed from the context.\n Send /new command to start new dialog"
+            text = "✍️ <i>Lưu ý:</i> Hộp thoại hiện tại của bạn quá dài nên <b>tin nhắn đầu tiên</b> của bạn đã bị xóa khỏi ngữ cảnh.\n Gửi lệnh /new để bắt đầu hộp thoại mới"
         else:
-            text = f"✍️ <i>Note:</i> Your current dialog is too long, so <b>{n_first_dialog_messages_removed} first messages</b> were removed from the context.\n Send /new command to start new dialog"
+            text = f"✍️ <i>Lưu ý:</i> Hộp thoại hiện tại của bạn quá dài nên <b>{n_first_dialog_messages_removed} tin nhắn đầu tiên</b> đã bị xóa khỏi ngữ cảnh.\n Gửi lệnh /new để bắt đầu hộp thoại mới"
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     # split answer into multiple messages due to 4096 character limit
@@ -160,7 +163,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 "html": ParseMode.HTML,
                 "markdown": ParseMode.MARKDOWN
             }[openai_utils.CHAT_MODES[chat_mode]["parse_mode"]]
-            
+
             await update.message.reply_text(answer_chunk, parse_mode=parse_mode)
         except telegram.error.BadRequest:
             # answer has invalid characters, so we send it without parse_mode
@@ -209,10 +212,11 @@ async def new_dialog_handle(update: Update, context: CallbackContext):
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     db.start_new_dialog(user_id)
-    await update.message.reply_text("Starting new dialog ✅")
+    await update.message.reply_text("Khởi tạo hội thoại mới")
 
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
-    await update.message.reply_text(f"{openai_utils.CHAT_MODES[chat_mode]['welcome_message']}", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(f"{openai_utils.CHAT_MODES[chat_mode]['welcome_message']}",
+                                    parse_mode=ParseMode.HTML)
 
 
 async def show_chat_modes_handle(update: Update, context: CallbackContext):
@@ -225,7 +229,7 @@ async def show_chat_modes_handle(update: Update, context: CallbackContext):
         keyboard.append([InlineKeyboardButton(chat_mode_dict["name"], callback_data=f"set_chat_mode|{chat_mode}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text("Select chat mode:", reply_markup=reply_markup)
+    await update.message.reply_text("Chọn chế độ trò chuyện: ", reply_markup=reply_markup)
 
 
 async def set_chat_mode_handle(update: Update, context: CallbackContext):
@@ -241,7 +245,7 @@ async def set_chat_mode_handle(update: Update, context: CallbackContext):
     db.start_new_dialog(user_id)
 
     await query.edit_message_text(
-        f"<b>{openai_utils.CHAT_MODES[chat_mode]['name']}</b> chat mode is set",
+        f"Chế độ trò chuyện <b>{openai_utils.CHAT_MODES[chat_mode]['name']}</b> được thiết lập",
         parse_mode=ParseMode.HTML
     )
 
@@ -259,18 +263,18 @@ async def show_balance_handle(update: Update, context: CallbackContext):
     price_per_1000_tokens = config.chatgpt_price_per_1000_tokens if config.use_chatgpt_api else config.gpt_price_per_1000_tokens
     n_spent_dollars = n_used_tokens * (price_per_1000_tokens / 1000)
 
-    text = f"You spent <b>{n_spent_dollars:.03f}$</b>\n"
-    text += f"You used <b>{n_used_tokens}</b> tokens\n\n"
+    text = f"Bạn đã chi <b>{n_spent_dollars:.03f}$</b>\n"
+    text += f"Bạn đã dùng <b>{n_used_tokens}</b> tokens\n\n"
 
-    text += "🏷️ Prices\n"
-    text += f"<i>- ChatGPT: {price_per_1000_tokens}$ per 1000 tokens\n"
-    text += f"- Whisper (voice recognition): {config.whisper_price_per_1_min}$ per 1 minute</i>"
+    text += "🏷️ Giá\n"
+    text += f"<i>- ChatGPT: {price_per_1000_tokens}$ mỗi 1000 tokens\n"
+    text += f"- Whisper (nhận diện giọng nói): {config.whisper_price_per_1_min}$ mỗi 1 phút</i>"
 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 async def edited_message_handle(update: Update, context: CallbackContext):
-    text = "🥲 Unfortunately, message <b>editing</b> is not supported"
+    text = "🥲 Rất tiếc, không hỗ trợ <b>chỉnh sửa</b> tin nhắn"
     await update.edited_message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
@@ -299,6 +303,23 @@ async def error_handle(update: Update, context: CallbackContext) -> None:
     except:
         await context.bot.send_message(update.effective_chat.id, "Some error in error handler")
 
+
+async def ask_bot_handle(update: Update, context: CallbackContext) -> None:
+    try:
+        ask_message = update.message.text.replace('/ask', '')
+        print(ask_message)
+
+        if len(ask_message) < 0:
+            await update.message.reply_text(f"Xin lỗi, em không thể hểu câu hỏi của {update.message.from_user.name} ạ!")
+            return
+
+        await message_handle(update, context, message=ask_message)
+    except Exception as e:
+        error_text = f"Đã xảy ra sự cố. Lý do: {e}"
+        logger.error(error_text)
+        await update.message.reply_text(error_text)
+        return
+
 def run_bot() -> None:
     application = (
         ApplicationBuilder()
@@ -320,15 +341,17 @@ def run_bot() -> None:
     application.add_handler(CommandHandler("retry", retry_handle, filters=user_filter))
     application.add_handler(CommandHandler("new", new_dialog_handle, filters=user_filter))
 
+    application.add_handler(CommandHandler("ask", ask_bot_handle, filters=user_filter))
+
     application.add_handler(MessageHandler(filters.VOICE & user_filter, voice_message_handle))
-    
+
     application.add_handler(CommandHandler("mode", show_chat_modes_handle, filters=user_filter))
     application.add_handler(CallbackQueryHandler(set_chat_mode_handle, pattern="^set_chat_mode"))
 
     application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
-    
+
     application.add_error_handler(error_handle)
-    
+
     # start the bot
     application.run_polling()
 
